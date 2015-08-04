@@ -42,7 +42,6 @@ class ReportLogEmitter implements IRunListener, IStandardStreamsListener {
 
 
   List<String> whenThens=new ArrayList<String>();
-  Map<String, String> mapOfWhenThens=Collections.synchronizedMap(new HashMap<String, String>());
 
   public void addListener(IReportLogListener listener) {
     listeners.add(listener);

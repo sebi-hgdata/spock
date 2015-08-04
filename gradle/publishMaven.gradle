@@ -48,13 +48,20 @@ install {
   deployers << repositories.mavenInstaller
 }
 
+//uploadArchives {
+//  deployers << repositories.mavenDeployer {
+//    snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+//      authentication(userName: "pniederw", password: System.getenv("SONATYPE_OSS_PASSWORD"))
+//    }
+//    repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+//      authentication(userName: "pniederw", password: System.getenv("SONATYPE_OSS_PASSWORD"))
+//    }
+//  }
+//}
 uploadArchives {
-  deployers << repositories.mavenDeployer {
-    snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
-      authentication(userName: "pniederw", password: System.getenv("SONATYPE_OSS_PASSWORD"))
-    }
-    repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
-      authentication(userName: "pniederw", password: System.getenv("SONATYPE_OSS_PASSWORD"))
+  repositories {
+    mavenDeployer {
+//      repository(url: "file://localhost/tmp/myRepo/")
     }
   }
 }
@@ -89,4 +96,4 @@ modifyPom { pom ->
   pom.dependencies.removeAll { it.scope == "test" }
 }
 
-deployers*.beforeDeployment { signing.signPom(it) }
+//deployers*.beforeDeployment { signing.signPom(it) }
