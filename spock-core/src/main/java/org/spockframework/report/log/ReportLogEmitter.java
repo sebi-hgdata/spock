@@ -37,7 +37,12 @@ class ReportLogEmitter implements IRunListener, IStandardStreamsListener {
   private FeatureInfo currentFeature;
 
   private boolean specFailed;
-  private boolean featureFailed;
+  private boolean featureOrIterationFailed;
+  private IterationInfo currentIteration;
+
+
+  List<String> whenThens=new ArrayList<String>();
+  Map<String, String> mapOfWhenThens=Collections.synchronizedMap(new HashMap<String, String>());
 
   public void addListener(IReportLogListener listener) {
     listeners.add(listener);
@@ -52,22 +57,33 @@ class ReportLogEmitter implements IRunListener, IStandardStreamsListener {
   }
 
   private void standardStream(String message, String key) {
-    if (currentFeature != null) {
+    if (currentFeature != null && !currentFeature.isParameterized()) {
       emit(mapOf(
-          "package", currentSpec.getPackage(),
-          "name", currentSpec.getName(),
-          "features", listOf(
+        "package", currentSpec.getPackage(),
+        "name", currentSpec.getName(),
+        "features", listOf(
           mapOf(
-              "name", currentFeature.getName(),
-              key, listOf(message)
+            "name", currentFeature.getName(),
+            key, listOf(message)
           )
-      )
+        )
+      ));
+    } else if (currentIteration != null) {
+      emit(mapOf(
+        "package", currentSpec.getPackage(),
+        "name", currentSpec.getName(),
+        "features", listOf(
+          mapOf(
+            "name", currentIteration.getFeature().getIterationNameProvider().getName(currentIteration),
+            key, listOf(message)
+          )
+        )
       ));
     } else if (currentSpec != null) {
       emit(mapOf(
-          "package", currentSpec.getPackage(),
-          "name", currentSpec.getName(),
-          key, listOf(message)
+        "package", currentSpec.getPackage(),
+        "name", currentSpec.getName(),
+        key, listOf(message)
       ));
     }
   }
@@ -84,53 +100,96 @@ class ReportLogEmitter implements IRunListener, IStandardStreamsListener {
   }
 
   public void block(String type, String description) {
-//    System.out.println(type+description);
+    if(whenThens.isEmpty()) {
+      whenThens.add(type + " " + description);
+    } else {
+      if(whenThens.get(whenThens.size()-1).startsWith(type)){
+        whenThens.add("and "+description);
+      } else{
+        whenThens.add(type + " " + description);
+      }
+    }
   }
 
   public void beforeFeature(FeatureInfo feature) {
-    currentFeature = feature;
-    featureFailed = false;
+    if (!feature.isParameterized()) {
+      whenThens.clear();
+      currentFeature = feature;
+      featureOrIterationFailed = false;
 
-    emit(mapOf(
+      emit(mapOf(
         "package", feature.getSpec().getBottomSpec().getPackage(),
         "name", feature.getSpec().getBottomSpec().getName(),
-        "features", listOf(putAll(mapOf(
-        "name", feature.getName(),
-        "start", getCurrentTime()
-    ), renderBlocks(feature.getBlocks()), renderTags(feature.getTags())))
-    ));
+                "features", listOf(
+                putAll(
+                  mapOf(
+                    "name", feature.getName(),
+                    "start", getCurrentTime()
+                  ),
+                  renderTags(feature.getTags())
+                )
+             )
+      ));
+    }
   }
 
   public void beforeIteration(IterationInfo iteration) {
-    //TODO
+    currentIteration = iteration;
+    featureOrIterationFailed = false;
+
+    whenThens.clear();
+    emit(mapOf(
+      "package", iteration.getFeature().getSpec().getBottomSpec().getPackage(),
+      "name", iteration.getFeature().getSpec().getBottomSpec().getName(),
+      "features", listOf(putAll(mapOf(
+        "name", iteration.getFeature().getIterationNameProvider().getName(iteration),
+        "start", getCurrentTime(),
+        "data", iteration.getDataValues()
+      ), renderTags(iteration.getFeature().getTags())))
+    ));
   }
 
   public void afterIteration(IterationInfo iteration) {
-    //TODO
+    emit(mapOf(
+      "package", iteration.getFeature().getSpec().getBottomSpec().getPackage(),
+      "name", iteration.getFeature().getSpec().getBottomSpec().getName(),
+      "features", listOf(
+        putAll(mapOf(
+          "name", iteration.getName(),
+          "end", getCurrentTime(),
+          "result", featureOrIterationFailed ? "failed" : "passed"
+        ), renderBlocks(iteration.getFeature().getBlocks()), renderAttachments(iteration.getFeature().getAttachments()))
+      )
+    ));
+
+    currentIteration = null;
+
   }
 
   public void afterFeature(FeatureInfo feature) {
-    emit(mapOf(
+    if (!feature.isParameterized()) {
+      emit(mapOf(
         "package", feature.getSpec().getBottomSpec().getPackage(),
         "name", feature.getSpec().getBottomSpec().getName(),
         "features", listOf(
-        putAll(mapOf(
+          putAll(mapOf(
             "name", feature.getName(),
             "end", getCurrentTime(),
-            "result", featureFailed ? "failed" : "passed"
-        ), renderAttachments(feature.getAttachments()))
-    )
-    ));
+            "result", featureOrIterationFailed ? "failed" : "passed"
+          ), renderBlocks(feature.getBlocks()), renderAttachments(feature.getAttachments()))
+        )
+      ));
 
-    currentFeature = null;
+      currentFeature = null;
+    }
   }
 
   public void afterSpec(SpecInfo spec) {
     emit(putAll(mapOf(
-        "package", spec.getPackage(),
-        "name", spec.getName(),
-        "end", getCurrentTime(),
-        "result", specFailed ? "failed" : "passed"
+      "package", spec.getPackage(),
+      "name", spec.getName(),
+      "end", getCurrentTime(),
+      "result", specFailed ? "failed" : "passed"
     ), renderAttachments(spec.getAttachments())));
 
     currentSpec = null;
@@ -141,35 +200,36 @@ class ReportLogEmitter implements IRunListener, IStandardStreamsListener {
     SpecInfo spec = error.getMethod().getParent().getBottomSpec();
     FeatureInfo feature = error.getMethod().getFeature();
     if (feature != null) {
-      featureFailed = true;
+      featureOrIterationFailed = true;
       emit(mapOf(
-          "package", spec.getPackage(),
-          "name", spec.getName(),
-          "features", listOf(
+        "package", spec.getPackage(),
+        "name", spec.getName(),
+        "features", listOf(
           mapOf(
-              "name", feature.getName(),
-              "exceptions", listOf(ExceptionUtil.printStackTrace(error.getException()))
+            "name", feature.getName(),
+            "exceptions", listOf(ExceptionUtil.printStackTrace(error.getException()))
           )
-      )
+        )
       ));
     } else {
       emit(mapOf(
-          "package", spec.getPackage(),
-          "name", spec.getName(),
-          "exceptions", listOf(ExceptionUtil.printStackTrace(error.getException()))
+        "package", spec.getPackage(),
+        "name", spec.getName(),
+        "exceptions", listOf(ExceptionUtil.printStackTrace(error.getException()))
       ));
     }
+    whenThens.clear();
   }
 
   public void specSkipped(SpecInfo spec) {
     long now = getCurrentTime();
 
     emit(putAll(mapOf(
-        "package", spec.getPackage(),
-        "name", spec.getName(),
-        "start", now,
-        "end", now,
-        "result", "skipped"
+      "package", spec.getPackage(),
+      "name", spec.getName(),
+      "start", now,
+      "end", now,
+      "result", "skipped"
     ), renderNarrative(spec.getNarrative()), renderTags(spec.getTags())));
   }
 
@@ -177,14 +237,14 @@ class ReportLogEmitter implements IRunListener, IStandardStreamsListener {
     long now = getCurrentTime();
 
     emit(mapOf(
-        "package", feature.getSpec().getBottomSpec().getPackage(),
-        "name", feature.getSpec().getBottomSpec().getName(),
-        "features", listOf(putAll(mapOf(
+      "package", feature.getSpec().getBottomSpec().getPackage(),
+      "name", feature.getSpec().getBottomSpec().getName(),
+      "features", listOf(putAll(mapOf(
         "name", feature.getName(),
         "start", now,
         "end", now,
         "result", "skipped"
-    ), renderBlocks(feature.getBlocks()), renderTags(feature.getTags())))
+      ), renderBlocks(feature.getBlocks()), renderTags(feature.getTags())))
     ));
   }
 
@@ -200,10 +260,10 @@ class ReportLogEmitter implements IRunListener, IStandardStreamsListener {
     List result = filterMap(tags, new IFunction<Tag, Object>() {
       public Object apply(Tag tag) {
         return filterNullValues(mapOf(
-            "name", tag.getName(),
-            "key", tag.getKey(),
-            "value", tag.getValue(),
-            "url", tag.getUrl()
+          "name", tag.getName(),
+          "key", tag.getKey(),
+          "value", tag.getValue(),
+          "url", tag.getUrl()
         ));
       }
     });
@@ -215,33 +275,38 @@ class ReportLogEmitter implements IRunListener, IStandardStreamsListener {
   }
 
   private Map renderBlocks(List<BlockInfo> blocks) {
+//    StringBuilder builder = new StringBuilder();
+//
+//
+//    for (int i = 0; i < blocks.size(); i++) {
+//      BlockInfo block = blocks.get(i);
+//      if (block.getTexts().isEmpty()) {
+//        continue;
+//      }
+//      String name = block.getKind().name();
+//      String label = name.equals("SETUP") ? "Given" : TextUtil.capitalize(name.toLowerCase());
+//      for (int j = 0; j < block.getTexts().size(); j++) {
+//        String text = block.getTexts().get(j);
+//        if (j == 0) {
+//          builder.append(label);
+//        } else {
+//          builder.append("And");
+//        }
+//        builder.append(" ");
+//        builder.append(text);
+//        if (i < blocks.size() - 1 || j < block.getTexts().size() - 1) {
+//          builder.append("\n");
+//        }
+//      }
+//    }
+//
+//    String result = builder.toString();
+//    return result.length() > 0 ? mapOf("narrative", result) : emptyMap();
     StringBuilder builder = new StringBuilder();
-
-
-    for (int i = 0; i < blocks.size(); i++) {
-      BlockInfo block = blocks.get(i);
-      if (block.getTexts().isEmpty()) {
-        continue;
-      }
-      String name = block.getKind().name();
-      String label = name.equals("SETUP") ? "Given" : TextUtil.capitalize(name.toLowerCase());
-      for (int j = 0; j < block.getTexts().size(); j++) {
-        String text = block.getTexts().get(j);
-        if (j == 0) {
-          builder.append(label);
-        } else {
-          builder.append("And");
-        }
-        builder.append(" ");
-        builder.append(text);
-        if (i < blocks.size() - 1 || j < block.getTexts().size() - 1) {
-          builder.append("\n");
-        }
-      }
+    for(String desc: whenThens){
+      builder.append(desc).append("\n");
     }
-
-    String result = builder.toString();
-    return result.length() > 0 ? mapOf("narrative", result) : emptyMap();
+    return mapOf("narrative", builder.toString());
   }
 
   private Map renderAttachments(List<Attachment> attachments) {
