@@ -16,8 +16,10 @@
 
 package org.spockframework.compiler;
 
+import java.io.PrintWriter;
 import java.util.*;
 
+import groovy.inspect.swingui.AstNodeToScriptVisitor;
 import org.codehaus.groovy.ast.*;
 import org.codehaus.groovy.ast.expr.*;
 import org.codehaus.groovy.ast.stmt.*;
@@ -87,7 +89,7 @@ public class WhereBlockRewriter {
         rewriteSimpleParameterization(binExpr, stat);
       else if (leftExpr instanceof ListExpression)
         rewriteMultiParameterization(binExpr, stat);
-      else 
+      else
         notAParameterization(stat);
     } else if (type == Types.ASSIGN)
       rewriteDerivedParameterization(binExpr, stat);
@@ -95,7 +97,7 @@ public class WhereBlockRewriter {
       stats.previous();
       rewriteTableLikeParameterization(stats);
     }
-    else 
+    else
       notAParameterization(stat);
   }
 
@@ -107,7 +109,7 @@ public class WhereBlockRewriter {
     MethodNode method =
         new MethodNode(
             InternalIdentifiers.getDataProviderName(whereBlock.getParent().getAst().getName(), dataProviderCount++),
-            Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC,
+            Opcodes.ACC_PUBLIC /*| Opcodes.ACC_SYNTHETIC*/,
             ClassHelper.OBJECT_TYPE,
             getPreviousParameters(nextDataVariableIndex),
             ClassNode.EMPTY_ARRAY,
@@ -273,19 +275,19 @@ public class WhereBlockRewriter {
       splitRow(orExpr.getRightExpression(), parts);
     }
   }
-  
+
   private BinaryExpression getOrExpression(Statement stat) {
     Expression expr = AstUtil.getExpression(stat, Expression.class);
     return getOrExpression(expr);
   }
-  
+
   private BinaryExpression getOrExpression(Expression expr) {
     BinaryExpression binExpr = ObjectUtil.asInstance(expr, BinaryExpression.class);
     if (binExpr == null) return null;
-    
+
     int binExprType = binExpr.getOperation().getType();
     if (binExprType == Types.BITWISE_OR || binExprType == Types.LOGICAL_OR) return binExpr;
-    
+
     return null;
   }
 
@@ -333,14 +335,6 @@ public class WhereBlockRewriter {
     Parameter[] parameters = whereBlock.getParent().getAst().getParameters();
     if (parameters.length == 0)
       addFeatureParameters();
-    else
-      checkAllParametersAreDataVariables(parameters);
-  }
-
-  private void checkAllParametersAreDataVariables(Parameter[] parameters) {
-    for (Parameter param : parameters)
-      if (!isDataProcessorVariable(param.getName()))
-        resources.getErrorReporter().error(param, "Parameter '%s' does not refer to a data variable", param.getName());
   }
 
   private void addFeatureParameters() {
@@ -353,24 +347,44 @@ public class WhereBlockRewriter {
   @SuppressWarnings("unchecked")
   private void createDataProcessorMethod() {
     if (dataProcessorVars.isEmpty()) return;
-    
-    dataProcessorStats.add(
-        new ReturnStatement(
-            new ArrayExpression(
-                ClassHelper.OBJECT_TYPE,
-                (List) dataProcessorVars)));
+
+    final VariableExpression resultMap = new VariableExpression("$spock_result", new ClassNode(Map.class));
+
+    dataProcessorStats.add( // Map $spock_result = new HashMap();
+      new ExpressionStatement(
+        new DeclarationExpression(
+          resultMap,
+          Token.newSymbol(Types.EQUALS, 0, 0),
+          new ConstructorCallExpression(new ClassNode(HashMap.class), ArgumentListExpression.EMPTY_ARGUMENTS))));
+
+    for (VariableExpression dataProcessorVar : dataProcessorVars) {
+      dataProcessorStats.add( // $spock_result.put(variable_name, variable);
+        new ExpressionStatement(
+          new MethodCallExpression(
+            resultMap,
+            "put",
+            new ArgumentListExpression(Arrays.asList(
+              new ConstantExpression(dataProcessorVar.getName()),
+              dataProcessorVar)))));
+    }
+
+    dataProcessorStats.add( // return $spock_result
+        new ReturnStatement(resultMap));
 
     BlockStatement blockStat = new BlockStatement(dataProcessorStats, new VariableScope());
+
     new DataProcessorVariableRewriter().visitBlockStatement(blockStat);
 
+    final MethodNode method = new MethodNode(
+      InternalIdentifiers.getDataProcessorName(whereBlock.getParent().getAst().getName()),
+      Opcodes.ACC_PUBLIC /*| Opcodes.ACC_SYNTHETIC*/,
+      ClassHelper.OBJECT_TYPE,
+      dataProcessorParams.toArray(new Parameter[dataProcessorParams.size()]),
+      ClassNode.EMPTY_ARRAY,
+      blockStat);
+
     whereBlock.getParent().getParent().getAst().addMethod(
-      new MethodNode(
-          InternalIdentifiers.getDataProcessorName(whereBlock.getParent().getAst().getName()),
-          Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC,
-          ClassHelper.OBJECT_TYPE,
-          dataProcessorParams.toArray(new Parameter[dataProcessorParams.size()]),
-          ClassNode.EMPTY_ARRAY,
-          blockStat));
+      method);
   }
 
   private static void notAParameterization(ASTNode stat) throws InvalidSpecCompileException {
