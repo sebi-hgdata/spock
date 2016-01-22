@@ -27,7 +27,9 @@ import org.spockframework.util.InternalSpockError;
 import spock.lang.Specification;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Executes a single Spec. Notifies its supervisor about overall execution
@@ -37,7 +39,6 @@ import java.util.List;
  * @author Peter Niederwieser
  */
 public class BaseSpecRunner {
-  protected static final Object[] EMPTY_ARGS = new Object[0];
   protected static final FeatureInfo NO_CURRENT_FEATURE = null;
   protected static final IterationInfo NO_CURRENT_ITERATION = null;
 
@@ -304,10 +305,10 @@ public class BaseSpecRunner {
   }
 
   private void runSimpleFeature(FeatureInfo feature) throws InvokeException {
-    initializeAndRunIteration(feature, EMPTY_ARGS, 1);
+    initializeAndRunIteration(feature, Collections.<String, Object>emptyMap(), 1);
   }
 
-  protected void initializeAndRunIteration(FeatureInfo feature, Object[] dataValues, int estimatedNumIterations) throws InvokeException {
+  protected void initializeAndRunIteration(FeatureInfo feature, Map<String, Object> dataValues, int estimatedNumIterations) throws InvokeException {
     final int attemptsCount = feature.getRetryCount() + 1;
 
     IterationInfo currentIteration = createIterationInfo(feature, dataValues, estimatedNumIterations);
@@ -343,7 +344,7 @@ public class BaseSpecRunner {
     invoke(feature, currentIteration, currentInstance, this, createMethodInfoForDoRunIteration(feature, currentInstance, currentIteration, reportFailures));
   }
 
-  private IterationInfo createIterationInfo(FeatureInfo feature, Object[] dataValues, int estimatedNumIterations) {
+  private IterationInfo createIterationInfo(FeatureInfo feature, Map<String, Object> dataValues, int estimatedNumIterations) {
     IterationInfo result = new IterationInfo(feature, dataValues, estimatedNumIterations);
     String iterationName = feature.getIterationNameProvider().getName(result);
     result.setName(iterationName);
@@ -475,7 +476,20 @@ public class BaseSpecRunner {
   }
 
   private void runFeatureMethod(FeatureInfo feature, final Specification currentInstance, IterationInfo currentIteration) throws InvokeException, MultipleInvokeException {
-    invoke(feature, currentIteration, currentInstance, currentInstance, feature.getFeatureMethod(), currentIteration.getDataValues());
+    invoke(feature, currentIteration, currentInstance, currentInstance, feature.getFeatureMethod(), dataValuesToArray(feature.getParameterNames(), currentIteration.getDataValues()));
+  }
+
+  private Object[] dataValuesToArray(List<String> parameterNames, Map<String, Object> dataValues) {
+    Object[] result = new Object[parameterNames.size()];
+    for (int i = 0; i < parameterNames.size(); i++) {
+      final String parameterName = parameterNames.get(i);
+      if (dataValues.containsKey(parameterName)){
+        result[i] = dataValues.get(parameterName);
+      }else {
+        throw new SpockExecutionException("Parameter '%s' was not set").withArgs(parameterName);
+      }
+    }
+    return result;
   }
 
   private void runCleanup(FeatureInfo feature, final Specification currentInstance, IterationInfo currentIteration) throws InvokeException, MultipleInvokeException {

@@ -102,6 +102,15 @@ public class FeatureInfo extends SpecElementInfo<SpecInfo, AnnotatedElement> {
     return dataProviders;
   }
 
+  public DataProviderInfo getDataProvider(String variableName) {
+    for (DataProviderInfo dataProvider : dataProviders) {
+      if (dataProvider.getDataVariables().get(0).equals(variableName)){
+        return dataProvider;
+      }
+    }
+    throw new IllegalArgumentException("There is no data provider for variable name "+variableName);
+  }
+
   public void addDataProvider(DataProviderInfo dataProvider) {
     dataProviders.add(dataProvider);
   }

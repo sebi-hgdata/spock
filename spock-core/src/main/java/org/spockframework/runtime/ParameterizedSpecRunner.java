@@ -19,6 +19,7 @@ package org.spockframework.runtime;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import org.spockframework.runtime.model.*;
 
@@ -123,7 +124,7 @@ public class ParameterizedSpecRunner extends BaseSpecRunner {
 
     while (haveNext(currentFeature, iterators)) {
       atLeastOneIteration = true;
-      final Object[] dataValues = nextArgs(currentFeature, iterators);
+      final Map<String, Object> dataValues = nextArgs(currentFeature, iterators);
 
       if (haveNext(currentFeature, iterators)) {
         schedulerForRunIterations.schedule(new Runnable() {
@@ -201,7 +202,7 @@ public class ParameterizedSpecRunner extends BaseSpecRunner {
   }
 
   // advances iterators and computes args
-  private Object[] nextArgs(FeatureInfo currentFeature, Iterator[] iterators) throws InvokeException, MultipleInvokeException {
+  private Map<String, Object> nextArgs(FeatureInfo currentFeature, Iterator[] iterators) throws InvokeException, MultipleInvokeException {
     Object[] next = new Object[iterators.length];
     for (int i = 0; i < iterators.length; i++)
       try {
@@ -210,7 +211,8 @@ public class ParameterizedSpecRunner extends BaseSpecRunner {
         throw new InvokeException(currentFeature, NO_CURRENT_ITERATION, new ErrorInfo(currentFeature.getDataProviders().get(i).getDataProviderMethod(), t));
       }
 
-    return (Object[]) invokeRaw(currentFeature, NO_CURRENT_ITERATION, sharedInstance, currentFeature.getDataProcessorMethod(), next);
+    //noinspection unchecked
+    return (Map) invokeRaw(currentFeature, NO_CURRENT_ITERATION, sharedInstance, currentFeature.getDataProcessorMethod(), next);
 
   }
 }
