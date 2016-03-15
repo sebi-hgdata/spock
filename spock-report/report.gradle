@@ -3,7 +3,7 @@ apply plugin: "spock-base"
 displayName = "Spock Framework - Report Module"
 
 description = "Interactive, business-friendly HTML reports for Spock specifications."
-
+apply from: script("publishMaven")
 dependencies {
   compile project(":spock-core")
   //compile "com.github.jknack:handlebars:0.7.0"
