@@ -1,3 +1,4 @@
+apply from: script("publishMaven")
 dependencies {
   compile gradleApi()
 }
