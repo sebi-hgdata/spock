@@ -35,7 +35,7 @@ public abstract class SpecInternals {
   private final SpecificationContext specificationContext = new SpecificationContext();
 
   @Beta
-  public SpecificationContext getSpecificationContext() {
+  public ISpecificationContext getSpecificationContext() {
     return specificationContext;
   }
 

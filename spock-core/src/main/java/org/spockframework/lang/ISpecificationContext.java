@@ -20,6 +20,7 @@ import org.spockframework.util.Beta;
 import org.spockframework.mock.IMockController;
 import org.spockframework.runtime.model.IterationInfo;
 import org.spockframework.util.Nullable;
+import spock.lang.Specification;
 
 @Beta
 public interface ISpecificationContext {
@@ -31,4 +32,10 @@ public interface ISpecificationContext {
   Throwable getThrownException();
 
   IMockController getMockController();
+
+  void setCurrentSpec(SpecInfo spec);
+
+  void setSharedInstance(Specification instance);
+
+  void setCurrentIteration(IterationInfo currentIteration);
 }
