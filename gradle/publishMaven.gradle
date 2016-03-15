@@ -89,4 +89,6 @@ modifyPom { pom ->
   pom.dependencies.removeAll { it.scope == "test" }
 }
 
-deployers*.beforeDeployment { signing.signPom(it) }
+if(!System.getenv("JITPACK")) {
+  deployers*.beforeDeployment { signing.signPom(it) }
+}
